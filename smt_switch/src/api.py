@@ -2,6 +2,8 @@
 # See the file LICENSE in the top-level source directory for licensing information.
 
 from collections import Sequence
+from types import SimpleNamespace
+
 from . import sorts
 from . import functions
 from . import terms
@@ -67,6 +69,19 @@ class smt:
 
         self._strict = strict
 
+        # create attributes and SimpleNamespaces for special solver constants
+        # these are used for particular tasks, such as rounding in Floating
+        # Point solving but do not fit into the general term structure
+        if hasattr(self._solver, '_special_consts'):
+            for k, v in self._solver._special_consts.items():
+                assert isinstance(v, dict), 'Expecting special consts to be <dict str: <dict str: solver_term>>'
+
+                wrapped_consts = {s: terms.WrapperTerm(self, t) for s, t in v.items()}
+                NT = SimpleNamespace(**wrapped_consts)
+                assert not hasattr(self, k), "Special Const name {} is already an api function".format(k)
+
+                setattr(self, k, NT)
+
     def ConstructFun(self, fun, *args):
         # partial function evaluation all handled internally
         return fun(*args)
@@ -126,8 +141,9 @@ class smt:
         return self.__term_map[self.solver.__class__](self,
                                                       sconst)
 
-    def TheoryConst(self, sort, value):
-        stconst = self.solver.TheoryConst(sort, value)
+    def TheoryConst(self, sort, *values):
+        values = [v.solver_term if hasattr(v, 'solver_term') else v for v in values]
+        stconst = self.solver.TheoryConst(sort, *values)
         return self.__term_map[self.solver.__class__](self,
                                                       stconst)
 

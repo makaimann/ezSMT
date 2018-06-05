@@ -6,7 +6,7 @@ from ..functions import func_enum
 from .solverbase import SolverBase
 from fractions import Fraction
 from smt_switch.util import reversabledict
-from collections import Sequence
+from collections import Sequence, namedtuple
 import os
 
 
@@ -33,7 +33,8 @@ class CVC4Solver(SolverBase):
                            sorts.Int: self._em.integerType,
                            sorts.Real: self._em.realType,
                            sorts.Bool: self._em.booleanType,
-                           sorts.Array: self._em.mkArrayType}
+                           sorts.Array: self._em.mkArrayType,
+                           sorts.FP: self._em.mkFloatingPointType}
 
         # def create_array_sort(idxsort, dsort):
         #     # get parameterized sorts
@@ -85,7 +86,24 @@ class CVC4Solver(SolverBase):
                           func_enum._ApplyUF: self.CVC4.APPLY_UF,
                           func_enum.Select: self.CVC4.SELECT,
                           func_enum.Store: self.CVC4.STORE,
-                          func_enum.Distinct: self.CVC4.DISTINCT
+                          func_enum.Distinct: self.CVC4.DISTINCT,
+                          func_enum.FPEq: self.CVC4.FLOATINGPOINT_EQ,
+                          func_enum.FPAbs: self.CVC4.FLOATINGPOINT_ABS,
+                          func_enum.FPNeg: self.CVC4.FLOATINGPOINT_NEG,
+                          func_enum.FPAdd: self.CVC4.FLOATINGPOINT_PLUS,
+                          func_enum.FPSub: self.CVC4.FLOATINGPOINT_SUB,
+                          func_enum.FPMul: self.CVC4.FLOATINGPOINT_MULT,
+                          func_enum.FPDiv: self.CVC4.FLOATINGPOINT_DIV,
+                          func_enum.FPRem: self.CVC4.FLOATINGPOINT_REM,
+                          func_enum.FPFma: self.CVC4.FLOATINGPOINT_FMA,
+                          func_enum.FPSqrt: self.CVC4.FLOATINGPOINT_SQRT,
+                          func_enum.FPRti: self.CVC4.FLOATINGPOINT_RTI,
+                          func_enum.FPMin: self.CVC4.FLOATINGPOINT_MIN,
+                          func_enum.FPMax: self.CVC4.FLOATINGPOINT_MAX,
+                          func_enum.FPLe: self.CVC4.FLOATINGPOINT_LEQ,
+                          func_enum.FPLt: self.CVC4.FLOATINGPOINT_LT,
+                          func_enum.FPGe: self.CVC4.FLOATINGPOINT_GEQ,
+                          func_enum.FPGt: self.CVC4.FLOATINGPOINT_GT
           })
 
         # all constants are No_op
@@ -97,7 +115,33 @@ class CVC4Solver(SolverBase):
                             # Note: losing info about op of applied function
                             # TODO: see if can extract function definition
                             self.CVC4.APPLY: func_enum.No_op,
-                            self.CVC4.BITVECTOR_EXTRACT: func_enum.Extract}
+                            self.CVC4.BITVECTOR_EXTRACT: func_enum.Extract,
+                            self.CVC4.FLOATINGPOINT_FP: func_enum.No_op,
+                            self.CVC4.NULL_EXPR: func_enum.No_op}
+
+        # special constants for floating point solver
+        # duplicate fenv.h values
+        # make available through self._round
+        FE_TONEAREST = 0
+        FE_DOWNWARD = 0x400
+        FE_UPWARD = 0x800
+        FE_TOWARDZERO = 0xc00
+
+        self._round = {
+            'RNE': self._em.mkVar(self._em.roundingModeType(), FE_TONEAREST),
+            'RTN': self._em.mkVar(self._em.roundingModeType(), FE_DOWNWARD),
+            'RTP': self._em.mkVar(self._em.roundingModeType(), FE_UPWARD),
+            'RTZ': self._em.mkVar(self._em.roundingModeType(), FE_TOWARDZERO),
+            'RNA': self._em.mkVar(self._em.roundingModeType(), ((~FE_TONEAREST) & 0x1) | ((~FE_UPWARD) & 0x2) |
+                                    ((~FE_DOWNWARD) & 0x4) | ((~FE_TOWARDZERO) & 0x8))
+        }
+
+        # set the default
+        self._round['default'] = self._round['RNE']
+
+        # The api creates an attribute for each entry in this dictionary,
+        # and creates a namedtuple out of each value
+        self._special_consts = {'Round': self._round}
 
         # Theory constant functions
         def create_bv(width, value):
@@ -114,10 +158,20 @@ class CVC4Solver(SolverBase):
         def create_bool(value):
             return self._em.mkBoolConst(value)
 
+        def create_fp(expbits, sigbits, *args):
+            if len(args) == 3:
+                return self._em.mkExpr(self.CVC4.FLOATINGPOINT_FP, *args)
+            elif len(args) == 1:
+                assert isinstance(value, Fraction)
+                return self._em.mkExpr(self.CVC4.FLOATINGPOINT_FP, self.CVC4.Rational(value.numerator, value.denominator))
+            else:
+                raise UnimplementedError("Don't have support for other FP instantiation techniques")
+
         self._CVC4Consts = {sorts.BitVec: create_bv,
                             sorts.Int: create_int,
                             sorts.Real: create_real,
-                            sorts.Bool: create_bool}
+                            sorts.Bool: create_bool,
+                            sorts.FP: create_fp}
 
     def Reset(self):
         self._smt.reset()
@@ -155,8 +209,8 @@ class CVC4Solver(SolverBase):
         cvc4const = self._em.mkVar(name, cvc4sort)
         return cvc4const
 
-    def TheoryConst(self, sort, value):
-        cvc4tconst = self._CVC4Consts[sort.__class__](*(sort.params + (value,)))
+    def TheoryConst(self, sort, *values):
+        cvc4tconst = self._CVC4Consts[sort.__class__](*(sort.params + values))
         return cvc4tconst
 
     def ApplyFun(self, f_enum, indices, *args):
@@ -233,3 +287,12 @@ class CVC4Solver(SolverBase):
 
     def Pop(self):
         self._smt.pop()
+
+    @property
+    def Round(self):
+        '''
+        Returns a namedtuple containing integers encoding the type of Floating Point Rounding
+
+        Intended for use with a solver supporting floating point queries.
+        '''
+        return self._round

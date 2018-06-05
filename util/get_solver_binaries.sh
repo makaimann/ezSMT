@@ -15,8 +15,8 @@ do
         echo "Missing at least $solver_dir and possibly more"
         echo "Retrieving solvers"
         rm -rf ./smt_solvers
-        wget http://web.stanford.edu/~makaim/files/smt_solvers.tar.gz
-        tar -xzvf ./smt_solvers.tar.gz
+        wget http://web.stanford.edu/~makaim/files/smt_solvers_fp.tar.gz
+        tar -xzvf ./smt_solvers_fp.tar.gz
         all_logic_solvers=false
         break
     fi

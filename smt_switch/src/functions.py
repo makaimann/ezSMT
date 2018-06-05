@@ -85,8 +85,24 @@ func_symbols = OrderedDict([('And', fdata(0, 2, sys.maxsize, _And)),
                             ('Store', fdata(0, 3, 3)),
                             ('No_op', fdata(0, 0, 0)),
                             ('_ApplyUF', fdata(0, 1, sys.maxsize)),
-                            ('Distinct', fdata(0, 2, sys.maxsize))])
-
+                            ('Distinct', fdata(0, 2, sys.maxsize)),
+                            ('FPEq', fdata(0, 2, 2)),
+                            ('FPAbs', fdata(0, 1, 1)),
+                            ('FPAdd', fdata(0, 2, 2)),
+                            ('FPSub', fdata(0, 2, 2)),
+                            ('FPMul', fdata(0, 2, 2)),
+                            ('FPDiv', fdata(0, 2, 2)),
+                            ('FPRem', fdata(0, 2, 2)),
+                            ('FPFma', fdata(0, 4, 4)),
+                            ('FPSqrt', fdata(0, 2, 2)),
+                            ('FPRti', fdata(0, 2, 2)),
+                            ('FPMin', fdata(0, 2, 2)),
+                            ('FPMax', fdata(0, 2, 2)),
+                            ('FPLt', fdata(0, 2, 2)),
+                            ('FPLe', fdata(0, 2, 2)),
+                            ('FPGt', fdata(0, 2, 2)),
+                            ('FPGe', fdata(0, 2, 2)),
+                            ('FPNeg', fdata(0, 1, 1))])
 
 # generate enums for each of these function symbols
 func_d = dict()

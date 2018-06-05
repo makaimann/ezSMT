@@ -43,6 +43,8 @@ class TermBase(metaclass=ABCMeta):
     def __add__(self, other):
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVAdd, self, other)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPAdd, self._smt.Round.default, self, other)
         else:
             return self._smt.ApplyFun(self._smt.Add, self, other)
 
@@ -53,6 +55,8 @@ class TermBase(metaclass=ABCMeta):
         # override for bitvectors
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVSub, self, other)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPSub, self._smt.Round.default, self, other)
         else:
             return self._smt.ApplyFun(self._smt.Sub, self, other)
 
@@ -66,6 +70,8 @@ class TermBase(metaclass=ABCMeta):
     def __neg__(self):
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVNeg, self)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPNeg, self._smt.Round.default, self)
         else:
             zero = self._smt.TheoryConst(self.sort, 0)
             return self._smt.ApplyFun(self._smt.Sub, zero, self)
@@ -73,6 +79,8 @@ class TermBase(metaclass=ABCMeta):
     def __mul__(self, other):
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVMul, self, other)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPMul, self._smt.Round.default, self, other)
         else:
             raise NotImplementedError("Haven't added nonlinear arithmetic operators yet.")
 
@@ -88,6 +96,8 @@ class TermBase(metaclass=ABCMeta):
     def __truediv__(self, other):
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVUdiv, self, other)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPDiv, self._smt.Round.default, self, other)
         else:
             raise NotImplementedError("Haven't added nonlinear arithmetic operators yet.")
 
@@ -102,6 +112,8 @@ class TermBase(metaclass=ABCMeta):
           "Operator expects 2 arguments of same sort"
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVSlt, self, other)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPLt, self, other)
 
         return self._smt.ApplyFun(self._smt.LT, self, other)
 
@@ -110,6 +122,8 @@ class TermBase(metaclass=ABCMeta):
           "Operator expects 2 arguments of same sort"
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVSle, self, other)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPLe, self, other)
 
         return self._smt.ApplyFun(self._smt.LEQ, self, other)
 
@@ -118,6 +132,8 @@ class TermBase(metaclass=ABCMeta):
           "Operator expects 2 arguments of same sort"
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVSgt, self, other)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPGt, self, other)
 
         return self._smt.ApplyFun(self._smt.GT, self, other)
 
@@ -126,6 +142,8 @@ class TermBase(metaclass=ABCMeta):
           "Operator expects 2 arguments of same sort"
         if self.sort.__class__ == sorts.BitVec:
             return self._smt.ApplyFun(self._smt.BVSge, self, other)
+        elif self.sort.__class__ == sorts.FP:
+            return self._smt.ApplyFun(self._smt.FPGe, self._smt.Round.default, self, other)
 
         return self._smt.ApplyFun(self._smt.GEQ, self, other)
 
@@ -205,12 +223,15 @@ class CVC4Term(TermBase):
                           'bitvec': lambda p: sorts.BitVec(p),
                           'bool': lambda p: sorts.Bool(),
                           'boolean': lambda p: sorts.Bool(),
-                          'array': lambda ids, ds: sorts.Array(ids, ds)
+                          'array': lambda ids, ds: sorts.Array(ids, ds),
+                          'floatingpoint': lambda exp, sig: sorts.FP(exp, sig),
+                          'roundingmode': lambda p: sorts._RoundingMode()
                           }
 
-        p = re.compile('\(?(_ )?(?P<sort>int|real|bitvector|bitvec|bool|array)\s?\(?(?P<param>\d+)?\)?')
+        p = re.compile('\(?(_ )?(?P<sort>floatingpoint|int|real|bitvector|bitvec|bool|array|roundingmode)\s?\(?(?P<param>\d+)?\)?')
 
         cvc4sortstr = solver_term.getType().toString().lower()
+
         match = p.search(cvc4sortstr)
 
         if not match:
@@ -228,6 +249,20 @@ class CVC4Term(TermBase):
             idxsort = self._str2sort[idxmatch.group('sort')](idxmatch.group('param'))
             dsort = self._str2sort[dmatch.group('sort')](dmatch.group('param'))
             params = (idxsort, dsort)
+
+        elif 'floatingpoint' in cvc4sortstr:
+            # regex not quite right for floatingpoint
+            # TODO: Fix regex without breaking other sorts
+            sig, exp = cvc4sortstr[cvc4sortstr.find('floatingpoint')+len('floatingpoint '):].replace(")", "").split()
+            sig, exp = int(sig), int(exp)
+            if sig == -1:
+                assert exp == -1
+
+                # this is the result of an operation -- unknown parameters
+                # don't give them values
+                sig, exp = None, None
+
+            params = (sig, exp)
 
         elif 'bitvec' in match.group('sort'):
             assert match.group('param'), 'BitVecs must have a width'
@@ -432,6 +467,29 @@ class BoolectorTerm(TermBase):
     @property
     def children(self):
         raise NotImplementedError('Boolector does not support querying children.')
+
+
+class WrapperTerm:
+    '''
+    Holds an arbitrary solver object. Used for special solver constants that can't be combined into arbitrary expressions or just don't fit into the general term structure for some reason
+    '''
+    def __init__(self, smt, solver_term):
+        self._smt = smt
+        self._solver_term = solver_term
+
+    @property
+    def smt(self):
+        return self._smt
+
+    @property
+    def solver_term(self):
+        return self._solver_term
+
+    def __eq__(self, other):
+        return self.solver_term == other.solver_term
+
+    def __ne__(self, other):
+        return self.solver_term != other.solver_term
 
 
 def __bool_fun(*args):

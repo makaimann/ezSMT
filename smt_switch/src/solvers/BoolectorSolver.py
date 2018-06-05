@@ -64,7 +64,9 @@ class BoolectorSolver(SolverBase):
         #                           sorts.Bool: results.BoolectorBitVecResult}
         self._BoolectorOptions = {'produce-models': self.boolector.BTOR_OPT_MODEL_GEN,
                                   'random-seed': self.boolector.BTOR_OPT_SEED,
-                                  'incremental': self.boolector.BTOR_OPT_INCREMENTAL}
+                                  'incremental': self.boolector.BTOR_OPT_INCREMENTAL,
+                                  'fun:preprop': self.boolector.BTOR_OPT_FUN_PREPROP,
+                                  'prop:nprops': self.boolector.BTOR_OPT_PROP_NPROPS}
 
         # am I missing any?
         self._BoolectorLogics = ['QF_BV', 'QF_ABV', 'QF_UFBV', 'QF_AUFBV']
@@ -88,6 +90,8 @@ class BoolectorSolver(SolverBase):
     def SetOption(self, optionstr, value):
         if optionstr in self._BoolectorOptions:
             self._btor.Set_opt(self._BoolectorOptions[optionstr], bool(value))
+        else:
+            raise RuntimeError("Unrecognized option: {}".format(optionstr))
 
     def DeclareFun(self, name, inputsorts, outputsort):
         assert isinstance(inputsorts, Sequence), \
